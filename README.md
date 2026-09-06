@@ -1,4 +1,4 @@
-# Word Square
+# Grid Word
 
 A single-file browser word game. Fill a 5×5 grid so that every row is a valid word; because the grid is symmetric, the columns read the same words.
 
