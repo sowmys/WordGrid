@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Word Square</title>
+<title>WordGrid</title>
 <style>
   :root{
     --ink:#1B2A49; --board:#22365E; --tile:#F5E9D0; --tile-dim:#E3D5B8; --seed:#F2B134;
@@ -41,32 +41,40 @@
   .actions button:disabled{opacity:.4;cursor:default}
   h2{font-size:13px;font-weight:600;color:var(--muted);margin:22px 0 6px;width:100%;max-width:340px}
   .words{list-style:none;padding:0;margin:0;width:100%;max-width:360px;display:grid;gap:6px}
-  .words li{display:grid;grid-template-columns:8ch 1fr;gap:10px;align-items:baseline;font-size:14px;padding:8px 10px;border-radius:6px;background:rgba(255,255,255,.05)}
-  .words li .w{letter-spacing:.35em;font-weight:700;text-transform:uppercase;white-space:nowrap}
+  .words li{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:baseline;font-size:14px;padding:8px 10px;border-radius:6px;background:rgba(255,255,255,.05)}
+  .words li .w{letter-spacing:.3em;font-weight:700;text-transform:uppercase;white-space:nowrap;min-width:7.5ch}
   .words li .w em{opacity:.3;font-style:normal}
   .words li .clue{color:var(--muted);line-height:1.35}
   .words li .clue i{color:var(--tile-dim);font-style:italic;margin-right:4px}
   .words li.ok .clue{color:var(--mint)}
   .words li.bad .clue{color:var(--coral)}
+  .custom{display:flex;gap:8px;margin-top:12px}
+  .custom input{width:16ch;background:rgba(255,255,255,.06);border:1.5px solid var(--muted);color:var(--tile);padding:8px 10px;border-radius:8px;font:inherit;font-size:14px;letter-spacing:.15em;text-transform:uppercase}
+  .custom input:focus{outline:none;border-color:var(--gold)}
+  .custom input::placeholder{letter-spacing:0;text-transform:none;color:var(--muted)}
+  .custom button{background:transparent;border:1.5px solid var(--tile-dim);color:var(--tile);padding:8px 14px;border-radius:8px;font:inherit;font-size:14px;cursor:pointer}
   .hint{margin-top:14px;font-size:12px;color:var(--muted);text-align:center;max-width:44ch;line-height:1.4}
   @media (prefers-reduced-motion:reduce){.cell,.board{transition:none}}
 </style>
 </head>
 <body>
-<h1>WORD SQUARE</h1>
-<p class="lead">Complete the square so every row is a Wordle word.</p>
+<h1>WORDGRID</h1>
+<p class="lead">Complete the grid so every row is a word.</p>
 <div class="top">
   <div class="count" id="count"></div>
 </div>
 <div class="board" id="board"></div>
 <div class="status" id="status"></div>
 <div class="actions">
-  <button class="primary" id="check">Check square</button>
-  <button id="hint">Hint</button>
+  <button class="primary" id="hint">Hint</button>
   <button id="undo">Undo</button>
   <button id="new">New puzzle</button>
 </div>
-<div class="hint">Hints used: <span id="hints">0</span>. Typing a letter fills its mirror. Arrow keys move, Backspace erases, Ctrl/⌘ Z undoes. Gold tiles are the seed. Clues describe one way to finish the square.</div>
+<div class="custom">
+  <input id="seedInput" maxlength="5" placeholder="your own 5-letter word" autocomplete="off" autocapitalize="characters" spellcheck="false">
+  <button id="seedGo">Start</button>
+</div>
+<div class="hint">Hints used: <span id="hints">0</span>. Typing a letter fills its mirror. Arrow keys move, Backspace erases, Ctrl/⌘ Z undoes. Gold tiles are the seed. Clues describe one way to finish the grid and adapt to your letters.</div>
 <h2>Current words and clues</h2>
 <ul class="words" id="words"></ul>
 <script>
@@ -133,13 +141,22 @@ function build(){
     board.appendChild(i);cells[r].push(i);
   }}
 }
-function newPuzzle(){
-  prepareWords();build();history=[];hints=0;$('hints').textContent=0;
-  seed='';
-  for(const w of W){
-    const g=grid.map(r=>r.slice());[...w].forEach((ch,c)=>{g[0][c]=ch;g[c][0]=ch;});
-    const s=findSolution(g);if(s){seed=w;target=s;break;}
+function seedGrid(w){const g=Array.from({length:n},()=>Array(n).fill(''));[...w].forEach((ch,c)=>{g[0][c]=ch;g[c][0]=ch;});return g;}
+function newPuzzle(custom){
+  prepareWords();
+  if(custom){
+    custom=custom.toLowerCase();
+    if(!dict.has(custom)){setStatus(`"${custom.toUpperCase()}" is not in the word list.`,'warn');return;}
+    const s=findSolution(seedGrid(custom));
+    if(!s){setStatus(`No grid can be built from "${custom.toUpperCase()}".`,'warn');return;}
+    seed=custom;target=s;
+  }else{
+    seed='';
+    for(const w of W){const s=findSolution(seedGrid(w));if(s){seed=w;target=s;break;}}
   }
+  build();history=[];hints=0;$('hints').textContent=0;
+  $('seedInput').value='';
+  try{if(location.protocol.startsWith('http'))window.history.replaceState(null,'',custom?'?seed='+seed:location.pathname);}catch(e){}
   [...seed].forEach((ch,c)=>{place(0,c,ch,false);cells[0][c].classList.add('seed');cells[c][0].classList.add('seed');
     cells[0][c].readOnly=true;cells[c][0].readOnly=true;});
   setStatus('');
@@ -179,7 +196,6 @@ function onKey(e){
     if(grid[r][c]&&!isSeed(r,c))move_(r,c,'');
     else{const p=prev(r,c);if(p){cells[p[0]][p[1]].focus();if(!isSeed(...p))move_(p[0],p[1],'');}}
   }
-  if(e.key==='Enter')check();
 }
 function prev(r,c){let k=r*n+c-1;return k<0?null:[Math.floor(k/n),k%n];}
 function move(r,c,dr,dc,wrap=false){
@@ -195,13 +211,16 @@ function refresh(){
   dead=count===0&&!cut;
   board.classList.toggle('dead',dead);countEl.classList.toggle('dead',dead);
   const label=count>=CAP?'250+':cut?count+'+':String(count);
-  countEl.innerHTML=`<b>${label}</b> possible square${count===1?'':'s'}`;
+  countEl.innerHTML=`<b>${label}</b> possible answer${count===1?'':'s'}`;
   if(dead)setStatus('No valid completion from here. Undo or change a letter.','warn');
   else if(status.classList.contains('warn'))setStatus('');
+  // keep clues consistent with what has been typed
+  const consistent=target&&grid.every((row,r)=>row.every((ch,c)=>!ch||ch===target[r][c]));
+  if(!consistent){const s=findSolution(grid);if(s)target=s;}
   const ws=rows(),won=ws.every(w=>w.length===n&&dict.has(w));
   board.classList.toggle('won',won);
-  if(won){cells.flat().forEach(c=>c.classList.add('ok'));setStatus('You made a word square!','win');}
-  $('hint').disabled=won;$('check').disabled=won;
+  if(won){cells.flat().forEach(c=>c.classList.add('ok'));setStatus('You made a WordGrid!','win');}
+  $('hint').disabled=won;
   $('undo').disabled=!history.length;
   renderWords();
 }
@@ -213,7 +232,7 @@ function renderWords(){
     const full=row.every(Boolean),w=row.join('');
     let clue='';
     if(full&&dict.has(w)){li.className='ok';const [pos,d]=DEFS[w];clue=`<i>${pos}</i>${d}`;}
-    else if(full){li.className='bad';clue='not a Wordle word';}
+    else if(full){li.className='bad';clue='not in the word list';}
     else if(target){const [pos,d]=DEFS[target[r]];clue=`<i>${pos}</i>${d}`;}
     li.innerHTML=`<span class="w">${letters}</span><span class="clue">${clue}</span>`;
     list.appendChild(li);
@@ -221,26 +240,23 @@ function renderWords(){
 }
 function clearMarks(){cells.flat().forEach(c=>c.classList.remove('ok','bad'));board.classList.remove('won');status.classList.remove('win');}
 function setStatus(t,cls=''){status.textContent=t;status.className='status '+cls;}
-function check(){
-  clearMarks();const ws=rows();
-  if(ws.some(w=>w.length<n)){setStatus('Fill every cell first.','warn');return;}
-  const good=ws.map(w=>dict.has(w));
-  ws.forEach((w,r)=>cells[r].forEach(c=>c.classList.add(good[r]?'ok':'bad')));
-  if(good.every(Boolean))setStatus('You made a word square!','win');
-  else{const k=good.filter(g=>!g).length;setStatus(`${k} row${k>1?'s are':' is'} not a recognised word.`,'warn');}
-}
 function hint(){
   const sol=findSolution(grid);
   if(!sol){setStatus('No valid completion exists from here. Undo a move first.','warn');return;}
   const empty=[];for(let r=1;r<n;r++)for(let c=r;c<n;c++)if(!grid[r][c])empty.push([r,c]);
-  if(!empty.length){setStatus('The square is already full. Try Check square.');return;}
+  if(!empty.length){setStatus('The grid is already full.');return;}
   const [r,c]=empty[Math.random()*empty.length|0];
   hints++;$('hints').textContent=hints;
-  move_(r,c,sol[r][c],true);setStatus(`Hint placed at row ${r+1}, column ${c+1}.`);cells[r][c].focus();
+  move_(r,c,sol[r][c],true);if(!board.classList.contains('won'))setStatus(`Hint placed at row ${r+1}, column ${c+1}.`);cells[r][c].focus();
 }
 /* ---------- wiring ---------- */
-$('check').onclick=check;$('hint').onclick=hint;$('undo').onclick=undo;$('new').onclick=newPuzzle;
-newPuzzle();
+$('hint').onclick=hint;$('undo').onclick=undo;$('new').onclick=()=>newPuzzle();
+const seedInput=$('seedInput');
+const startCustom=()=>{const v=seedInput.value.replace(/[^a-z]/gi,'');if(v.length===5)newPuzzle(v);else setStatus('Enter a 5-letter word.','warn');};
+$('seedGo').onclick=startCustom;
+seedInput.addEventListener('keydown',e=>{if(e.key==='Enter')startCustom();});
+let urlSeed=null;try{urlSeed=new URLSearchParams(location.search).get('seed');}catch(e){}
+if(urlSeed&&/^[a-z]{5}$/i.test(urlSeed))newPuzzle(urlSeed);else newPuzzle();
 </script>
 </body>
 </html>
